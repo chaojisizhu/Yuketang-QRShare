@@ -108,8 +108,10 @@ const startCamera = async () => {
             {
                 fps: 10,
                 qrbox: { width: 220, height: 220 },
-                // 请求连续自动对焦
+                // 注意：html5-qrcode 在提供 videoConstraints 时会完全忽略上面的
+                // cameraIdOrConfig，因此 facingMode 必须写在这里面
                 videoConstraints: {
+                    facingMode: 'environment',
                     focusMode: 'continuous',
                     advanced: [{ focusMode: 'continuous' }],
                 },
