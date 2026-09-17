@@ -1,5 +1,7 @@
+@import "./fonts-misans.css";
 @import "tailwindcss";
 
+/* ---------- 设计令牌（沿用莱茵生命视觉基准） ---------- */
 :root {
     --paper: #eae5e1;
     --panel: #f2eee9;
@@ -9,6 +11,22 @@
     --line-soft: #c6c1b7;
     --accent: #c5a16b;
     --accent-deep: #9b7247;
+    --danger: #b3402e;
+    --ease-spring: cubic-bezier(0.22, 0.61, 0.21, 1);
+    color-scheme: light;
+}
+
+[data-theme="dark"] {
+    --paper: #11181b;
+    --panel: #172024;
+    --ink: #e0e3dc;
+    --muted: #a6b0b1;
+    --line: #536166;
+    --line-soft: #3a464b;
+    --accent: #c5a16b;
+    --accent-deep: #d3b283;
+    --danger: #d97b6c;
+    color-scheme: dark;
 }
 
 html,
@@ -20,22 +38,58 @@ body,
 
 body {
     font-family:
+        "MiSans",
         -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", "MiSans", "Noto Sans SC",
+        "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
         sans-serif;
     color: var(--ink);
     background: var(--paper);
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+::selection {
+    background: rgba(197, 161, 107, 0.35);
+}
+
+/* ---------- 进场编排：逐段上浮 ---------- */
+.rise {
+    opacity: 0;
+    animation: rise-in 0.55s var(--ease-spring) forwards;
+    animation-delay: var(--d, 0ms);
+}
+
+@keyframes rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+        filter: blur(3px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rise {
+        animation: none;
+        opacity: 1;
+    }
 }
 
 /* ---------- 档案面板 ---------- */
 .archive-panel {
-    background: rgba(255, 255, 255, 0.42);
+    background: color-mix(in srgb, var(--panel) 55%, transparent);
     border: 1px solid var(--line);
     border-radius: 3px;
+    backdrop-filter: blur(6px);
+    transition: background-color 0.35s ease, border-color 0.35s ease;
 }
 
-/* ---------- 眉题（小字英文标签） ---------- */
+/* ---------- 眉题 ---------- */
 .kicker {
     font-size: 11px;
     letter-spacing: 2.2px;
@@ -45,11 +99,6 @@ body {
     justify-content: space-between;
     align-items: baseline;
     gap: 12px;
-}
-
-.kicker::before {
-    content: "";
-    flex: 0 0 auto;
 }
 
 /* ---------- 按钮 ---------- */
@@ -71,9 +120,14 @@ body {
     cursor: pointer;
     user-select: none;
     transition:
-        background 0.15s ease,
-        color 0.15s ease,
-        border-color 0.15s ease;
+        background 0.18s var(--ease-spring),
+        color 0.18s var(--ease-spring),
+        border-color 0.18s var(--ease-spring),
+        transform 0.12s var(--ease-spring);
+}
+
+.btn:active {
+    transform: translateY(1px) scale(0.985);
 }
 
 .btn-solid {
@@ -92,14 +146,20 @@ body {
     color: var(--accent-deep);
 }
 
+.btn-amber {
+    border-color: var(--accent-deep);
+    color: var(--accent-deep);
+    background: rgba(197, 161, 107, 0.12);
+}
+
 .btn-danger {
     border-color: var(--line);
     color: var(--muted);
 }
 
 .btn-danger:hover {
-    border-color: #b3402e;
-    color: #b3402e;
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 /* ---------- 输入框 ---------- */
@@ -113,7 +173,9 @@ body {
     font-size: 15px;
     color: var(--ink);
     outline: none;
-    transition: border-color 0.15s ease;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
 }
 
 .input-line::placeholder {
@@ -121,7 +183,8 @@ body {
 }
 
 .input-line:focus {
-    border-color: var(--ink);
+    border-color: var(--accent-deep);
+    box-shadow: 0 1px 0 0 var(--accent-deep);
 }
 
 /* ---------- 状态灯 ---------- */
@@ -135,7 +198,8 @@ body {
 
 .status-light.on {
     background: var(--accent);
-    box-shadow: 0 0 0 3px rgba(197, 161, 107, 0.25);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+    animation: pulse-dot 2.4s ease-in-out infinite;
 }
 
 .status-light.wait {
@@ -149,16 +213,65 @@ body {
     }
 }
 
-/* ---------- 细刻度线 ---------- */
+@keyframes pulse-dot {
+    50% {
+        box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+}
+
+/* ---------- 细线 ---------- */
 .hairline-t {
     border-top: 1px solid var(--line);
+    transition: border-color 0.35s ease;
 }
 
 .hairline-b {
     border-bottom: 1px solid var(--line);
+    transition: border-color 0.35s ease;
 }
 
-/* ---------- 摄像头取景框四角 ---------- */
+/* ---------- 取景器 ---------- */
+.vf {
+    position: relative;
+    margin-top: 1.25rem;
+    background: #000;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.vf-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    font-size: 12px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.62);
+    border: 1px solid rgba(197, 161, 107, 0.5);
+    border-radius: 2px;
+    pointer-events: none;
+    white-space: nowrap;
+    animation: hint-in 0.25s var(--ease-spring);
+}
+
+@keyframes hint-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* ---------- 四角框 + 扫描线 ---------- */
 .scan-frame {
     position: absolute;
     inset: 14%;
@@ -170,6 +283,7 @@ body {
     width: 1.4rem;
     height: 1.4rem;
     border: 1px solid var(--accent);
+    animation: corner-breathe 3.2s ease-in-out infinite;
 }
 
 .scan-frame span:nth-child(1) {
@@ -184,6 +298,7 @@ body {
     right: 0;
     border-left: none;
     border-bottom: none;
+    animation-delay: 0.2s;
 }
 
 .scan-frame span:nth-child(3) {
@@ -191,6 +306,7 @@ body {
     left: 0;
     border-right: none;
     border-top: none;
+    animation-delay: 0.4s;
 }
 
 .scan-frame span:nth-child(4) {
@@ -198,6 +314,232 @@ body {
     right: 0;
     border-left: none;
     border-top: none;
+    animation-delay: 0.6s;
+}
+
+@keyframes corner-breathe {
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.45;
+    }
+}
+
+.scan-line {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent) 30%, var(--accent) 70%, transparent);
+    box-shadow: 0 0 12px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: scan-sweep 2.8s ease-in-out infinite;
+}
+
+@keyframes scan-sweep {
+    0%,
+    100% {
+        top: 4%;
+        opacity: 0;
+    }
+
+    12% {
+        opacity: 1;
+    }
+
+    50% {
+        top: 94%;
+        opacity: 1;
+    }
+
+    62% {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scan-line {
+        animation: none;
+        top: 50%;
+        opacity: 0.8;
+    }
+
+    .scan-frame span,
+    .status-light.on {
+        animation: none;
+    }
+}
+
+/* ---------- 点按对焦框 ---------- */
+.focus-mark {
+    position: absolute;
+    width: 56px;
+    height: 56px;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--accent);
+    pointer-events: none;
+    animation: focus-pop 0.28s var(--ease-spring);
+    transition: border-color 0.2s ease;
+}
+
+.focus-mark::before,
+.focus-mark::after {
+    content: "";
+    position: absolute;
+    background: var(--accent);
+}
+
+.focus-mark::before {
+    left: 50%;
+    top: -6px;
+    width: 1px;
+    height: 5px;
+    box-shadow: 0 62px 0 var(--accent);
+}
+
+.focus-mark::after {
+    top: 50%;
+    left: -6px;
+    height: 1px;
+    width: 5px;
+    box-shadow: 62px 0 0 var(--accent);
+}
+
+/* 对焦中：外圈琥珀弧线旋转扫描 */
+.focus-arc {
+    position: absolute;
+    inset: -13px;
+    border-radius: 50%;
+    opacity: 0;
+    background: conic-gradient(from 0deg, var(--accent) 0deg 50deg, transparent 50deg 360deg);
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+    mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+}
+
+.focus-mark.focusing .focus-arc {
+    opacity: 1;
+    animation: arc-spin 0.9s linear infinite;
+}
+
+.focus-mark.focusing {
+    border-color: color-mix(in srgb, var(--accent) 70%, #fff);
+}
+
+/* 合焦锁定：整体变琥珀实心感 */
+.focus-mark.locked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(197, 161, 107, 0.35), 0 0 18px rgba(197, 161, 107, 0.25);
+}
+
+.focus-mark.unsupported {
+    border-color: var(--danger);
+}
+
+@keyframes arc-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes focus-pop {
+    from {
+        scale: 1.45;
+        opacity: 0;
+    }
+
+    to {
+        scale: 1;
+        opacity: 1;
+    }
+}
+
+/* ---------- 变焦 / 对焦 chips ---------- */
+.zoom-chip {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 15px;
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        color 0.15s ease,
+        transform 0.1s ease;
+}
+
+.zoom-chip:hover {
+    border-color: var(--accent-deep);
+    color: var(--accent-deep);
+}
+
+.zoom-chip:active {
+    transform: scale(0.92);
+}
+
+.mf-chip {
+    flex: none;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.mf-chip.active {
+    border-color: var(--accent-deep);
+    color: var(--accent-deep);
+    background: rgba(197, 161, 107, 0.12);
+}
+
+/* ---------- 滑块 ---------- */
+input[type="range"].slider-line {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 1px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"].slider-line::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 0;
+    background: var(--ink);
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.12s ease;
+}
+
+input[type="range"].slider-line::-webkit-slider-thumb:hover {
+    background: var(--accent-deep);
+    transform: scale(1.15);
+}
+
+input[type="range"].slider-line::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 0;
+    background: var(--ink);
+    border: none;
+    cursor: pointer;
 }
 
 /* ---------- 待机呼吸方块 ---------- */
@@ -234,74 +576,30 @@ body {
     object-fit: cover;
 }
 
-/* ---------- 滑块 ---------- */
-input[type="range"].slider-line {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 1px;
-    background: var(--line);
-    outline: none;
-}
-
-input[type="range"].slider-line::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 0;
-    background: var(--ink);
-    border: none;
-    cursor: pointer;
-}
-
-/* ---------- 点按对焦框 ---------- */
-.focus-mark {
-    position: absolute;
-    width: 56px;
-    height: 56px;
-    transform: translate(-50%, -50%);
-    border: 1px solid var(--accent);
-    pointer-events: none;
-    animation: focus-fade 0.9s ease-out forwards;
-}
-
-.focus-mark::before,
-.focus-mark::after {
-    content: "";
-    position: absolute;
-    background: var(--accent);
-}
-
-.focus-mark::before {
-    left: 50%;
-    top: -6px;
-    width: 1px;
-    height: 5px;
-    box-shadow: 0 62px 0 var(--accent);
-}
-
-.focus-mark::after {
-    top: 50%;
-    left: -6px;
-    height: 1px;
-    width: 5px;
-    box-shadow: 62px 0 0 var(--accent);
-}
-
-@keyframes focus-fade {
-    0% {
-        opacity: 1;
-        scale: 1.25;
-    }
-
-    100% {
-        opacity: 0;
-        scale: 1;
-    }
+/* 隐藏库自带的白色 qrbox 遮罩，取景框视觉统一为琥珀角框 + 扫描线 */
+#qr-shaded-region {
+    display: none !important;
 }
 
 /* ---------- 房间列表 ---------- */
+.room-list-enter-active {
+    transition: all 0.35s var(--ease-spring);
+}
+
+.room-list-leave-active {
+    transition: all 0.2s ease;
+}
+
+.room-list-enter-from {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+.room-list-leave-to {
+    opacity: 0;
+    transform: translateX(6px);
+}
+
 .room-item {
     display: flex;
     align-items: center;
@@ -315,13 +613,16 @@ input[type="range"].slider-line::-webkit-slider-thumb {
     color: var(--ink);
     font-size: 14px;
     cursor: pointer;
+    user-select: none;
     transition:
-        background 0.15s ease,
-        border-color 0.15s ease;
+        background 0.18s var(--ease-spring),
+        border-color 0.18s var(--ease-spring),
+        transform 0.18s var(--ease-spring);
 }
 
 .room-item:hover {
     border-color: var(--line);
+    transform: translateX(3px);
 }
 
 .room-item.active {
@@ -338,4 +639,136 @@ input[type="range"].slider-line::-webkit-slider-thumb {
 
 .room-item.active .room-index {
     color: var(--accent);
+}
+
+/* ---------- 二维码揭示 ---------- */
+.qr-reveal-enter-active {
+    transition: all 0.45s var(--ease-spring);
+}
+
+.qr-reveal-enter-from {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(4px);
+}
+
+.qr-flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(197, 161, 107, 0.35), transparent);
+    animation: qr-flash-sweep 0.7s ease-out;
+}
+
+@keyframes qr-flash-sweep {
+    from {
+        transform: translateY(-100%);
+    }
+
+    to {
+        transform: translateY(100%);
+    }
+}
+
+/* ---------- 角色选择格 ---------- */
+.role-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    transition:
+        border-color 0.18s ease,
+        color 0.18s ease,
+        transform 0.12s ease;
+}
+
+.role-cell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.32s var(--ease-spring);
+    z-index: 0;
+}
+
+.role-cell > * {
+    position: relative;
+    z-index: 1;
+}
+
+.role-cell:hover {
+    border-color: var(--ink);
+}
+
+.role-cell:active {
+    transform: scale(0.98);
+}
+
+.role-cell.selected {
+    border-color: var(--ink);
+    color: var(--paper);
+}
+
+.role-cell.selected::before {
+    transform: scaleX(1);
+}
+
+/* ---------- 逐字输入光标 ---------- */
+.type-caret::after {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 3px;
+    vertical-align: -0.12em;
+    background: var(--accent);
+    animation: caret-blink 0.85s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* ---------- 页面过渡 ---------- */
+.page-enter-active {
+    transition: all 0.26s var(--ease-spring);
+}
+
+.page-leave-active {
+    transition: all 0.16s ease;
+}
+
+.page-enter-from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(4px);
+}
+
+.page-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+    filter: blur(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-enter-active,
+    .page-leave-active,
+    .room-list-enter-active,
+    .room-list-leave-active,
+    .qr-reveal-enter-active {
+        transition: none;
+    }
 }

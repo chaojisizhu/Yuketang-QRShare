@@ -1,7 +1,7 @@
 <template>
     <div class="archive-panel w-full max-w-2xl min-w-0 p-5 md:p-8">
         <!-- 眉题 -->
-        <div class="kicker mb-5">
+        <div class="kicker mb-5 rise" style="--d: 0ms">
             <span>Sender / Scan Module</span>
             <span class="flex items-center gap-2 normal-case tracking-normal text-[12px]">
                 <span class="status-light" :class="roomStatus === 'ready' ? 'on' : 'wait'"></span>
@@ -10,7 +10,7 @@
         </div>
 
         <!-- 操作员行 -->
-        <div class="hairline-t pt-4 flex items-end justify-between gap-4 flex-wrap">
+        <div class="hairline-t pt-4 flex items-end justify-between gap-4 flex-wrap rise" style="--d: 40ms">
             <div>
                 <div class="text-[11px] tracking-[2px] uppercase mb-1" style="color: var(--muted)">Operator / 发送者</div>
                 <div class="text-2xl font-semibold tracking-wide">{{ username }}</div>
@@ -21,18 +21,31 @@
             </div>
         </div>
 
-        <!-- 摄像头（点击画面可手动对焦） -->
-        <div class="relative mt-5 bg-black aspect-[4/3] overflow-hidden" style="border: 1px solid var(--ink); border-radius: 2px"
-             @pointerdown="onTapFocus">
+        <!-- 取景器：点按对焦 · 双指捏合变焦 -->
+        <div class="vf rise" style="--d: 80ms"
+             :class="{ paused: paused, 'vf-touch': focusStatus === 'focusing' }"
+             @pointerdown="onPointerDown"
+             @pointermove="onPointerMove"
+             @pointerup="onPointerUp"
+             @pointercancel="onPointerUp"
+             @wheel.prevent="onWheel">
             <div id="reader" class="w-full h-full"></div>
 
+            <!-- 四角框 + 扫描线 -->
             <div v-if="cameraRunning && !paused" class="scan-frame">
                 <span></span><span></span><span></span><span></span>
+                <i class="scan-line"></i>
             </div>
 
             <!-- 点按对焦框 -->
             <div v-if="focusMark" :key="focusMark.id" class="focus-mark"
-                 :style="{ left: focusMark.x + 'px', top: focusMark.y + 'px' }"></div>
+                 :class="focusStatus"
+                 :style="{ left: focusMark.x + 'px', top: focusMark.y + 'px' }">
+                <i class="focus-arc"></i>
+            </div>
+
+            <!-- 对焦提示 -->
+            <div v-if="focusHint" class="vf-hint">{{ focusHint }}</div>
 
             <div v-if="paused" class="absolute inset-0 flex flex-col items-center justify-center bg-black/75">
                 <span class="text-[11px] tracking-[2.5px] uppercase" style="color: var(--accent)">Standby</span>
@@ -46,35 +59,56 @@
         </div>
 
         <!-- 最近传输 -->
-        <div v-if="lastSent" class="mt-4 flex items-baseline gap-3 text-[12px]" style="color: var(--accent-deep)">
+        <div v-if="lastSent" class="mt-4 flex items-baseline gap-3 text-[12px] rise" style="--d: 120ms; color: var(--accent-deep)">
             <span class="tracking-[1.5px] uppercase shrink-0">Last Transmission</span>
             <span class="truncate font-medium">{{ lastSent }}</span>
         </div>
 
-        <!-- 缩放 -->
-        <div v-if="hasZoom" class="mt-5 flex items-center gap-4">
+        <!-- 变焦：真实镜头变焦 -->
+        <div v-if="caps.zoom" class="mt-5 flex items-center gap-4 rise" style="--d: 140ms">
             <span class="text-[11px] tracking-[2px] uppercase shrink-0" style="color: var(--muted)">Zoom</span>
-            <input type="range" class="slider-line" v-model.number="zoomRatio"
-                   :min="zoomMin" :max="zoomMax" :step="zoomStep" @input="setZoom" />
-            <span class="text-[12px] shrink-0 w-12 text-right font-medium">{{ zoomRatio.toFixed(1) }}x</span>
+            <button class="zoom-chip" title="缩小" @click="zoomBy(1 / 1.25)">−</button>
+            <input type="range" class="slider-line" :value="zoomValue"
+                   :min="caps.zoom.min" :max="caps.zoom.max" :step="caps.zoom.step"
+                   @input="setZoom(Number(($event.target as HTMLInputElement).value))" />
+            <button class="zoom-chip" title="放大" @click="zoomBy(1.25)">＋</button>
+            <span class="text-[14px] shrink-0 w-14 text-right font-semibold">
+                <RollingNumber :value="zoomValue" :decimals="1" />x
+            </span>
+        </div>
+
+        <!-- 手动对焦距离（镜头马达） -->
+        <div v-if="caps.focusDistance" class="mt-4 flex items-center gap-4 rise" style="--d: 160ms">
+            <button class="mf-chip" :class="{ active: !manualFocus }" @click="autoFocus">AF</button>
+            <input type="range" class="slider-line" :value="mfNormalized"
+                   min="0" max="1" step="0.01"
+                   @input="onMfInput" />
+            <span class="text-[11px] tracking-[2px] uppercase shrink-0" style="color: var(--muted)">MF</span>
         </div>
 
         <!-- 操作 -->
-        <div class="hairline-t mt-6 pt-5 flex gap-2 flex-wrap">
+        <div class="hairline-t mt-6 pt-5 flex gap-2 flex-wrap rise" style="--d: 180ms">
             <button v-if="cameraRunning && !paused" class="btn btn-line" @click="pauseCamera">暂停</button>
             <button v-if="paused" class="btn btn-line" @click="resumeCamera">恢复</button>
+            <button v-if="caps.torch" class="btn btn-line" :class="{ 'btn-amber': torchOn }" @click="toggleTorch">
+                {{ torchOn ? '关灯' : '补光' }}
+            </button>
             <button class="btn btn-danger ml-auto" @click="leave">结束分享</button>
         </div>
 
-        <p class="text-[12px] mt-4 mb-0" style="color: var(--muted)">将二维码对准取景框自动识别；点击画面任意位置可手动对焦</p>
+        <p class="text-[12px] mt-4 mb-1 rise" style="--d: 200ms; color: var(--muted)">
+            对准取景框自动识别 · 点按画面手动对焦 · 双指捏合变焦
+        </p>
     </div>
 </template>
 
 <script setup lang="ts">
 import * as Html5QrcodeModule from 'html5-qrcode';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import socket from '../socket.ts';
 import router from '../router';
+import RollingNumber from './RollingNumber.vue';
+import { useCameraControl } from '../composables/useCameraControl.ts';
 
 const Html5Qrcode = (Html5QrcodeModule as any).Html5Qrcode;
 
@@ -87,15 +121,26 @@ const paused = ref(false);
 const cameraError = ref('');
 const lastSent = ref('');
 const focusMark = ref<{ x: number; y: number; id: number } | null>(null);
-
-const hasZoom = ref(false);
-const zoomRatio = ref(1);
-const zoomMin = ref(1);
-const zoomMax = ref(1);
-const zoomStep = ref(0.25);
+const focusHint = ref('');
 
 let reader: InstanceType<typeof Html5Qrcode> | null = null;
 let lastData = '';
+let hintTimer: ReturnType<typeof setTimeout> | undefined;
+
+const getVideoEl = () => document.querySelector<HTMLVideoElement>('#reader video');
+
+const {
+    caps, focusStatus, zoomValue, focusDistanceValue, manualFocus, torchOn,
+    attach, detach, tapFocus, autoFocus, setFocusDistance, setZoom, zoomBy, toggleTorch,
+} = useCameraControl(getVideoEl);
+
+const mfNormalized = computed(() => {
+    const fd = caps.value.focusDistance;
+    if (!fd) return 0;
+    return (focusDistanceValue.value - fd.min) / (fd.max - fd.min);
+});
+
+const onMfInput = (e: Event) => setFocusDistance(Number((e.target as HTMLInputElement).value));
 
 const createRoom = (): Promise<boolean> =>
     new Promise((resolve) => {
@@ -109,16 +154,16 @@ const startCamera = async () => {
     try {
         reader = new Html5Qrcode('reader');
         await reader.start(
-            // 优先使用后置摄像头
             { facingMode: 'environment' },
             {
                 fps: 10,
-                qrbox: { width: 220, height: 220 },
-                // 注意：html5-qrcode 在提供 videoConstraints 时会完全忽略上面的
-                // cameraIdOrConfig，因此 facingMode 必须写在这里面
+                qrbox: { width: 230, height: 230 },
+                // 关键：请求高分辨率视频流。低分辨率流是“放大糊成一片”的根因——
+                // 数码放大的是 480p 的像素。1080p/4K 流配合镜头变焦才有原生相机质感。
                 videoConstraints: {
                     facingMode: 'environment',
-                    focusMode: 'continuous',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
                     advanced: [{ focusMode: 'continuous' }],
                 },
             },
@@ -126,30 +171,17 @@ const startCamera = async () => {
             () => {},
         );
 
-        // 部分浏览器需要在流启动后再次强制连续对焦
-        try {
-            await reader.applyVideoConstraints({
-                advanced: [{ focusMode: 'continuous' }],
+        // 等视频轨就绪后探测能力（对焦/变焦/对焦距离/闪光灯）
+        const video = getVideoEl();
+        if (video && !video.videoWidth) {
+            await new Promise<void>((resolve) => {
+                video.addEventListener('loadeddata', () => resolve(), { once: true });
+                setTimeout(resolve, 1500);
             });
-        } catch {
-            // 设备不支持对焦设置时忽略
         }
+        await attach();
 
         cameraRunning.value = true;
-
-        // 检测变焦能力
-        try {
-            const caps = reader.getRunningTrackCameraCapabilities();
-            if (caps && typeof caps.zoomFeature === 'function') {
-                const z = caps.zoomFeature();
-                zoomMin.value = z.min();
-                zoomMax.value = z.max();
-                zoomStep.value = z.step() || 0.1;
-                hasZoom.value = zoomMax.value > zoomMin.value;
-            }
-        } catch {
-            hasZoom.value = false;
-        }
     } catch (e) {
         console.error(e);
         cameraError.value = '无法开启摄像头，请检查浏览器权限，或通过 HTTPS 访问';
@@ -167,34 +199,95 @@ const onScanSuccess = (decodedText: string) => {
     lastSent.value = `${new Date().toLocaleTimeString()} · ${decodedText.slice(0, 40)}${decodedText.length > 40 ? '…' : ''}`;
 };
 
-const setZoom = () => {
-    if (!reader) return;
-    reader.applyVideoConstraints({
-        advanced: [{ zoom: zoomRatio.value }],
-    }).catch(() => {});
+/* ---------- 点按对焦 + 捏合变焦手势 ---------- */
+
+const pointers = new Map<number, { x: number; y: number }>();
+let pinchStartDist = 0;
+let pinchStartZoom = 1;
+let tapStart: { x: number; y: number; t: number } | null = null;
+let tapMoved = false;
+
+const vfRect = () => (document.querySelector('.vf') as HTMLElement | null)?.getBoundingClientRect();
+
+/** object-fit: cover 下，把屏幕坐标换算成传感器画面归一化坐标 */
+const toSensorPoint = (clientX: number, clientY: number) => {
+    const video = getVideoEl();
+    if (!video || !video.videoWidth) return null;
+    const r = video.getBoundingClientRect();
+    const scale = Math.max(r.width / video.videoWidth, r.height / video.videoHeight);
+    const dispW = video.videoWidth * scale;
+    const dispH = video.videoHeight * scale;
+    const x = (clientX - r.left - (r.width - dispW) / 2) / dispW;
+    const y = (clientY - r.top - (r.height - dispH) / 2) / dispH;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+    return { x: Math.min(0.98, Math.max(0.02, x)), y: Math.min(0.98, Math.max(0.02, y)) };
 };
 
-// 点按画面手动对焦（安卓 Chrome 支持 pointsOfInterest 对焦区域；
-// 不支持的浏览器会静默忽略该约束，不影响连续自动对焦）
-const onTapFocus = (ev: PointerEvent) => {
-    if (!reader || !cameraRunning.value || paused.value) return;
-    const el = document.getElementById('reader');
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = (ev.clientX - rect.left) / rect.width;
-    const y = (ev.clientY - rect.top) / rect.height;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+const showHint = (text: string) => {
+    focusHint.value = text;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => (focusHint.value = ''), 1800);
+};
 
-    focusMark.value = { x: ev.clientX - rect.left, y: ev.clientY - rect.top, id: Date.now() };
+const onPointerDown = (ev: PointerEvent) => {
+    if (!cameraRunning.value || paused.value || cameraError.value) return;
+    (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
-    reader.applyVideoConstraints({
-        advanced: [
-            {
-                focusMode: 'single-shot',
-                pointsOfInterest: [{ x, y }],
-            },
-        ],
-    }).catch(() => {});
+    if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchStartDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchStartZoom = zoomValue.value;
+        tapStart = null; // 双指时不触发点按对焦
+    } else {
+        tapStart = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+        tapMoved = false;
+    }
+};
+
+const onPointerMove = (ev: PointerEvent) => {
+    if (!pointers.has(ev.pointerId)) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+    if (pointers.size === 2 && caps.value.zoom) {
+        const [a, b] = [...pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchStartDist > 0) {
+            setZoom(pinchStartZoom * (dist / pinchStartDist));
+        }
+    } else if (tapStart) {
+        if (Math.hypot(ev.clientX - tapStart.x, ev.clientY - tapStart.y) > 12) tapMoved = true;
+    }
+};
+
+const onPointerUp = (ev: PointerEvent) => {
+    const wasPinch = pointers.size === 2;
+    pointers.delete(ev.pointerId);
+
+    if (!wasPinch && tapStart && !tapMoved && performance.now() - tapStart.t < 400) {
+        const rect = vfRect();
+        const pt = toSensorPoint(ev.clientX, ev.clientY);
+        if (rect && pt) {
+            focusMark.value = { x: ev.clientX - rect.left, y: ev.clientY - rect.top, id: Date.now() };
+            navigator.vibrate?.(12);
+            tapFocus(pt.x, pt.y).then((mode) => {
+                if (mode === 'unsupported') {
+                    showHint('此设备不支持点按对焦，已使用自动对焦');
+                } else if (mode === 'mode-only') {
+                    showHint('设备不支持对焦点，已触发单次对焦');
+                } else if (mode === 'pump') {
+                    showHint('设备不支持对焦点，已重新驱动对焦马达');
+                }
+            });
+        }
+    }
+    if (pointers.size < 2) pinchStartDist = 0;
+    if (pointers.size === 0) tapStart = null;
+};
+
+const onWheel = (e: WheelEvent) => {
+    if (!cameraRunning.value || paused.value || !caps.value.zoom) return;
+    zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
 };
 
 const pauseCamera = () => {
@@ -233,6 +326,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    clearTimeout(hintTimer);
+    detach();
     // 停止摄像头并断开连接（断开连接会触发服务端关闭房间）
     if (reader) {
         const r = reader;

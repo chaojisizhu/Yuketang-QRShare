@@ -1,16 +1,16 @@
 <template>
     <div class="archive-panel w-full max-w-md min-w-0 p-6 md:p-9">
-        <!-- 眉题 -->
-        <div class="kicker mb-6">
-            <span class="truncate">QRShare / Transmission Terminal</span>
-            <span class="shrink-0">v2.0</span>
+        <!-- 眉题（逐字输入） -->
+        <div class="kicker mb-6 rise" style="--d: 0ms">
+            <span class="truncate" :class="{ 'type-caret': typing }">{{ kickerText }}</span>
+            <span class="shrink-0">v2.1</span>
         </div>
 
         <!-- 标题 -->
-        <h1 class="text-3xl font-normal m-0 tracking-wide">二维码分享器</h1>
-        <p class="text-sm mt-2 mb-0" style="color: var(--muted)">一人扫码，全宿舍签到</p>
+        <h1 class="text-3xl font-normal m-0 tracking-wide rise" style="--d: 90ms">二维码分享器</h1>
+        <p class="text-sm mt-2 mb-0 rise" style="--d: 140ms; color: var(--muted)">一人扫码，全宿舍签到</p>
 
-        <div class="hairline-t mt-6 pt-6">
+        <div class="hairline-t mt-6 pt-6 rise" style="--d: 190ms">
             <label class="block text-[11px] tracking-[2px] uppercase mb-2" style="color: var(--muted)">用户名 / Username</label>
             <input
                 v-model="username"
@@ -22,7 +22,7 @@
         </div>
 
         <!-- 角色 -->
-        <div class="mt-6">
+        <div class="mt-6 rise" style="--d: 250ms">
             <label class="block text-[11px] tracking-[2px] uppercase mb-2" style="color: var(--muted)">角色 / Role</label>
             <div class="grid grid-cols-2 gap-2">
                 <button
@@ -43,11 +43,11 @@
             </div>
         </div>
 
-        <p v-if="error" class="text-sm mt-4 mb-0" style="color: #b3402e">{{ error }}</p>
+        <p v-if="error" class="text-sm mt-4 mb-0 rise" style="--d: 0ms; color: var(--danger)">{{ error }}</p>
 
-        <button class="btn btn-solid w-full mt-7" @click="handleLogin">进入终端</button>
+        <button class="btn btn-solid w-full mt-7 rise" style="--d: 320ms" @click="handleLogin">进入终端</button>
 
-        <div class="hairline-t mt-7 pt-4 flex justify-between text-[11px] tracking-[1.5px] uppercase" style="color: var(--muted)">
+        <div class="hairline-t mt-7 pt-4 flex justify-between text-[11px] tracking-[1.5px] uppercase rise" style="--d: 380ms; color: var(--muted)">
             <span>No Auth Required</span>
             <span>Rhine Style</span>
         </div>
@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, type FunctionalComponent, h } from 'vue';
+import { onMounted, onUnmounted, ref, type FunctionalComponent, h } from 'vue';
 import { useRouter } from 'vue-router';
 
 type Role = 'sender' | 'receiver';
@@ -64,6 +64,11 @@ const router = useRouter();
 const username = ref('');
 const role = ref<Role>('receiver');
 const error = ref('');
+
+const KICKER_FULL = 'QRShare / Transmission Terminal';
+const kickerText = ref('');
+const typing = ref(false);
+let typeTimer: ReturnType<typeof setInterval> | undefined;
 
 const CameraIcon: FunctionalComponent = () =>
     h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5, class: 'w-6 h-6' }, [
@@ -97,34 +102,27 @@ const handleLogin = () => {
         router.replace('/receiver');
     }
 };
+
+onMounted(() => {
+    // 开场逐字输入（尊重减少动态效果）
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+        kickerText.value = KICKER_FULL;
+        return;
+    }
+    typing.value = true;
+    let i = 0;
+    typeTimer = setInterval(() => {
+        i += 1;
+        kickerText.value = KICKER_FULL.slice(0, i);
+        if (i >= KICKER_FULL.length) {
+            clearInterval(typeTimer);
+            setTimeout(() => (typing.value = false), 900);
+        }
+    }, 34);
+});
+
+onUnmounted(() => {
+    clearInterval(typeTimer);
+});
 </script>
-
-<style scoped>
-.role-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    min-width: 0;
-    padding: 0.9rem 1rem;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--ink);
-    cursor: pointer;
-    text-align: left;
-    transition:
-        border-color 0.15s ease,
-        background 0.15s ease,
-        color 0.15s ease;
-}
-
-.role-cell:hover {
-    border-color: var(--ink);
-}
-
-.role-cell.selected {
-    background: var(--ink);
-    border-color: var(--ink);
-    color: var(--paper);
-}
-</style>
