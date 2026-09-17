@@ -7,6 +7,14 @@ export interface UserPayload {
     role: Role;
 }
 
+// Sender 创建房间的 payload
+export interface CreateRoomPayload extends UserPayload {}
+
+// 创建房间响应
+export interface CreateRoomResponse {
+    success: boolean;
+}
+
 // Sender 发送二维码的 payload
 export interface QrCodePayload extends UserPayload {
     data: string;
@@ -55,6 +63,10 @@ export interface RoomsListResponse {
 
 // Socket 事件类型定义 - 客户端发送到服务端
 export interface ClientToServerEvents {
+    createRoom: (
+        payload: CreateRoomPayload,
+        callback: (res: CreateRoomResponse) => void,
+    ) => void;
     qrCode: (payload: QrCodePayload) => void;
     joinRoom: (
         payload: JoinRoomPayload,
@@ -78,6 +90,7 @@ export interface ServerToClientEvents {
 export interface Room {
     name: string;
     senderName: string;
+    senderSocketId: string | null;
     lastQrCode: string | null;
     lastTimestamp: number | null;
     lastActivityTime: number;

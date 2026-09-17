@@ -8,6 +8,7 @@ import { roomManager } from "./roomManager.js";
 import type {
     ClientToServerEvents,
     ServerToClientEvents,
+    CreateRoomPayload,
     QrCodePayload,
     JoinRoomPayload,
     LeaveRoomPayload,
@@ -45,6 +46,35 @@ roomManager.startExpiryCheck((expiredRoomNames) => {
 io.on("connection", (socket) => {
     logger.debug(`Client connected: ${socket.id}`);
 
+    // 记录该 socket 加入过的房间，用于断开时清理接收者计数
+    const joinedRooms = new Set<string>();
+
+    // 处理 sender 创建房间
+    socket.on(
+        "createRoom",
+        (payload: CreateRoomPayload, callback: (res: { success: boolean }) => void) => {
+            const { username, role } = payload;
+
+            // 验证角色
+            if (role !== "sender") {
+                logger.debug(`Non-sender attempted to create room: ${username}`);
+                callback({ success: false });
+                return;
+            }
+
+            const existed = roomManager.getRoom(username) !== undefined;
+            roomManager.createRoom(username, socket.id);
+
+            // 新房间（或发送者重连接管）时通知所有 receiver
+            if (!existed) {
+                io.emit("newRoom", { roomName: username });
+                logger.info(`New room created: ${username}`);
+            }
+
+            callback({ success: true });
+        },
+    );
+
     // 处理 sender 发送二维码
     socket.on("qrCode", (payload: QrCodePayload) => {
         const { username, role, data } = payload;
@@ -55,12 +85,12 @@ io.on("connection", (socket) => {
             return;
         }
 
-        // 获取或创建房间
+        // 获取或创建房间（兼容未先创建房间的老客户端）
         let room = roomManager.getRoom(username);
         const isNewRoom = !room;
 
         if (isNewRoom) {
-            room = roomManager.createRoom(username);
+            room = roomManager.createRoom(username, socket.id);
             // 通知所有 receiver 有新房间
             io.emit("newRoom", { roomName: username });
             logger.debug(`New room created: ${username}`);
@@ -100,16 +130,19 @@ io.on("connection", (socket) => {
                 return;
             }
 
-            // 检查房间是否存在
             const room = roomManager.getRoom(roomName);
+
+            // 加入 Socket.IO 房间（即使房间尚不存在，receiver 也可以先进去等待发送者）
+            socket.join(roomName);
+            joinedRooms.add(roomName);
+
             if (!room) {
-                logger.debug(`Room ${roomName} does not exist`);
+                logger.debug(
+                    `Receiver ${username} waiting in not-yet-created room ${roomName}`,
+                );
                 callback({ data: null, timestamp: null });
                 return;
             }
-
-            // 加入 Socket.IO 房间
-            socket.join(roomName);
 
             // 增加接收者计数
             roomManager.addReceiver(roomName);
@@ -134,17 +167,11 @@ io.on("connection", (socket) => {
             return;
         }
 
-        // 检查房间是否存在
-        const room = roomManager.getRoom(roomName);
-        if (!room) {
-            logger.debug(`Room ${roomName} does not exist, cannot leave`);
-            return;
-        }
-
         // 离开 Socket.IO 房间
         socket.leave(roomName);
+        joinedRooms.delete(roomName);
 
-        // 减少接收者计数
+        // 房间可能已不存在（发送者离开后被关闭），计数清理尽量执行
         roomManager.removeReceiver(roomName);
 
         logger.debug(`Receiver ${username} left room ${roomName}`);
@@ -180,7 +207,18 @@ io.on("connection", (socket) => {
     // 处理断开连接
     socket.on("disconnect", () => {
         logger.debug(`Client disconnected: ${socket.id}`);
-        // 注意：不需要特殊处理，房间会通过过期机制自动清理
+
+        // 发送者断开：关闭其房间，通知所有客户端
+        const closedRooms = roomManager.closeRoomsBySenderSocket(socket.id);
+        for (const roomName of closedRooms) {
+            io.emit("roomDrop", { roomName });
+        }
+
+        // 清理断开时仍留在房间里的接收者计数
+        for (const roomName of joinedRooms) {
+            roomManager.removeReceiver(roomName);
+        }
+        joinedRooms.clear();
     });
 });
 

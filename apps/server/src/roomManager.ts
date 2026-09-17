@@ -12,15 +12,19 @@ export class RoomManager {
     private expiryCheckTimer: NodeJS.Timeout | null = null;
 
     /**
-     * 创建房间（如果不存在）
+     * 创建房间（如果不存在），并绑定发送者的 socket id
      * @param senderName 发送者名称
+     * @param senderSocketId 发送者 socket id
      * @returns 房间对象
      */
-    createRoom(senderName: string): Room {
+    createRoom(senderName: string, senderSocketId: string): Room {
         const existingRoom = this.rooms.get(senderName);
         if (existingRoom) {
+            // 发送者重连时接管房间
+            existingRoom.senderSocketId = senderSocketId;
+            existingRoom.lastActivityTime = Date.now();
             logger.debug(
-                `Room ${senderName} already exists, returning existing room`,
+                `Room ${senderName} already exists, sender socket re-bound`,
             );
             return existingRoom;
         }
@@ -28,6 +32,7 @@ export class RoomManager {
         const room: Room = {
             name: senderName,
             senderName,
+            senderSocketId,
             lastQrCode: null,
             lastTimestamp: null,
             lastActivityTime: Date.now(),
@@ -37,6 +42,23 @@ export class RoomManager {
         this.rooms.set(senderName, room);
         logger.debug(`Room ${senderName} created`);
         return room;
+    }
+
+    /**
+     * 关闭指定 socket 作为发送者的所有房间
+     * @param socketId 发送者 socket id
+     * @returns 被关闭的房间名称列表
+     */
+    closeRoomsBySenderSocket(socketId: string): string[] {
+        const closed: string[] = [];
+        for (const [roomName, room] of this.rooms) {
+            if (room.senderSocketId === socketId) {
+                this.rooms.delete(roomName);
+                closed.push(roomName);
+                logger.info(`Room ${roomName} closed because sender left`);
+            }
+        }
+        return closed;
     }
 
     /**
