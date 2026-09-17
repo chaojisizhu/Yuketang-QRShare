@@ -21,13 +21,18 @@
             </div>
         </div>
 
-        <!-- 摄像头 -->
-        <div class="relative mt-5 bg-black aspect-[4/3] overflow-hidden" style="border: 1px solid var(--ink); border-radius: 2px">
+        <!-- 摄像头（点击画面可手动对焦） -->
+        <div class="relative mt-5 bg-black aspect-[4/3] overflow-hidden" style="border: 1px solid var(--ink); border-radius: 2px"
+             @pointerdown="onTapFocus">
             <div id="reader" class="w-full h-full"></div>
 
             <div v-if="cameraRunning && !paused" class="scan-frame">
                 <span></span><span></span><span></span><span></span>
             </div>
+
+            <!-- 点按对焦框 -->
+            <div v-if="focusMark" :key="focusMark.id" class="focus-mark"
+                 :style="{ left: focusMark.x + 'px', top: focusMark.y + 'px' }"></div>
 
             <div v-if="paused" class="absolute inset-0 flex flex-col items-center justify-center bg-black/75">
                 <span class="text-[11px] tracking-[2.5px] uppercase" style="color: var(--accent)">Standby</span>
@@ -61,7 +66,7 @@
             <button class="btn btn-danger ml-auto" @click="leave">结束分享</button>
         </div>
 
-        <p class="text-[12px] mt-4 mb-0" style="color: var(--muted)">将雨课堂二维码对准取景框，识别后自动传输给房间内的接收者</p>
+        <p class="text-[12px] mt-4 mb-0" style="color: var(--muted)">将二维码对准取景框自动识别；点击画面任意位置可手动对焦</p>
     </div>
 </template>
 
@@ -81,6 +86,7 @@ const cameraRunning = ref(false);
 const paused = ref(false);
 const cameraError = ref('');
 const lastSent = ref('');
+const focusMark = ref<{ x: number; y: number; id: number } | null>(null);
 
 const hasZoom = ref(false);
 const zoomRatio = ref(1);
@@ -165,6 +171,29 @@ const setZoom = () => {
     if (!reader) return;
     reader.applyVideoConstraints({
         advanced: [{ zoom: zoomRatio.value }],
+    }).catch(() => {});
+};
+
+// 点按画面手动对焦（安卓 Chrome 支持 pointsOfInterest 对焦区域；
+// 不支持的浏览器会静默忽略该约束，不影响连续自动对焦）
+const onTapFocus = (ev: PointerEvent) => {
+    if (!reader || !cameraRunning.value || paused.value) return;
+    const el = document.getElementById('reader');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = (ev.clientX - rect.left) / rect.width;
+    const y = (ev.clientY - rect.top) / rect.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+    focusMark.value = { x: ev.clientX - rect.left, y: ev.clientY - rect.top, id: Date.now() };
+
+    reader.applyVideoConstraints({
+        advanced: [
+            {
+                focusMode: 'single-shot',
+                pointsOfInterest: [{ x, y }],
+            },
+        ],
     }).catch(() => {});
 };
 

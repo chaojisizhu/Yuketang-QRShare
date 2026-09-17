@@ -255,6 +255,52 @@ input[type="range"].slider-line::-webkit-slider-thumb {
     cursor: pointer;
 }
 
+/* ---------- 点按对焦框 ---------- */
+.focus-mark {
+    position: absolute;
+    width: 56px;
+    height: 56px;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--accent);
+    pointer-events: none;
+    animation: focus-fade 0.9s ease-out forwards;
+}
+
+.focus-mark::before,
+.focus-mark::after {
+    content: "";
+    position: absolute;
+    background: var(--accent);
+}
+
+.focus-mark::before {
+    left: 50%;
+    top: -6px;
+    width: 1px;
+    height: 5px;
+    box-shadow: 0 62px 0 var(--accent);
+}
+
+.focus-mark::after {
+    top: 50%;
+    left: -6px;
+    height: 1px;
+    width: 5px;
+    box-shadow: 62px 0 0 var(--accent);
+}
+
+@keyframes focus-fade {
+    0% {
+        opacity: 1;
+        scale: 1.25;
+    }
+
+    100% {
+        opacity: 0;
+        scale: 1;
+    }
+}
+
 /* ---------- 房间列表 ---------- */
 .room-item {
     display: flex;
