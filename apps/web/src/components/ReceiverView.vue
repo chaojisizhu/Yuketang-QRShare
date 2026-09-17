@@ -1,139 +1,184 @@
 <template>
-  <div class="bg-white p-4 rounded-2xl w-5/6 h-5/6 grid grid-cols-2">
-    <div class="sender-list border-r w-1/3">
-      <ul>
-        <li v-for="(room, i) in roomList" :key="i"
-          @click="currentRoomIndex == i ? currentRoomIndex = undefined : currentRoomIndex = i"
-          :class="{ active: currentRoomIndex === i }" class="cursor-pointer p-2">
-          {{ room }}
-        </li>
-      </ul>
-      <p v-if="roomList.length === 0">暂无可用房间...</p>
-    </div>
-
-    <div class="display-area">
-      <div v-if="currentRoomIndex !== undefined">
-        <h3>正在接收 [{{ currentRoomName }}] 二维码:</h3>
-        <div class="qr-content" v-if="lastQrData">
-          <a-qrcode :value="lastQrData" />
-          <div class=" mt-3">接收时间: {{ lastQrTime }}</div>
+    <div class="archive-panel w-full max-w-5xl min-w-0 p-5 md:p-8">
+        <!-- 眉题 -->
+        <div class="kicker mb-5">
+            <span>Receiver / Display Module</span>
+            <button class="flex items-center gap-2 text-[11px] tracking-[1.5px] uppercase hover:opacity-70 transition-opacity" style="color: var(--muted)" @click="refreshRooms">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" :class="{ 'animate-spin': refreshing }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5.2 8.5A8 8 0 0119.4 6M18.8 15.5A8 8 0 014.6 18" />
+                </svg>
+                Refresh
+            </button>
         </div>
-        <div v-else>等待扫码...</div>
-      </div>
-      <div v-else>
-        请先在左侧选择一个房间进入
-      </div>
+
+        <!-- 操作员行 -->
+        <div class="hairline-t pt-4 flex items-end justify-between gap-4 flex-wrap">
+            <div>
+                <div class="text-[11px] tracking-[2px] uppercase mb-1" style="color: var(--muted)">Operator / 接收者</div>
+                <div class="text-2xl font-semibold tracking-wide">{{ username }}</div>
+            </div>
+            <div class="text-right">
+                <div class="text-[11px] tracking-[2px] uppercase mb-1" style="color: var(--muted)">Rooms / 在线房间</div>
+                <div class="text-sm font-medium">{{ roomList.length }} 个</div>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-[280px_1fr] gap-6 mt-5">
+            <!-- 房间列表 -->
+            <div class="md:border-r md:pr-5" style="border-color: var(--line)">
+                <div class="flex flex-col gap-1.5">
+                    <button v-for="(room, i) in roomList" :key="room"
+                            class="room-item" :class="{ active: currentRoomName === room }"
+                            @click="selectRoom(room)">
+                        <span class="room-index">{{ String(i + 1).padStart(2, '0') }}</span>
+                        <span class="truncate">{{ room }}</span>
+                    </button>
+                </div>
+                <div v-if="roomList.length === 0" class="hairline-t mt-4 pt-4">
+                    <div class="standby-mark mx-auto" style="transform: scale(0.6)"></div>
+                    <p class="text-center text-[12px] mt-2 mb-0" style="color: var(--muted)">暂无房间，等待发送者开启分享…</p>
+                </div>
+            </div>
+
+            <!-- 显示区域 -->
+            <div class="flex flex-col items-center justify-center min-h-[400px]">
+                <!-- 未选择 -->
+                <div v-if="!currentRoomName && !roomClosed" class="text-center">
+                    <div class="standby-mark mx-auto"></div>
+                    <p class="text-sm mt-5 mb-0" style="color: var(--muted)">从左侧选择一个房间进入</p>
+                </div>
+
+                <!-- 房间关闭 -->
+                <div v-else-if="roomClosed" class="text-center">
+                    <div class="standby-mark mx-auto" style="border-color: #b3402e"></div>
+                    <p class="text-base mt-5 mb-0" style="color: #b3402e">发送者已离开，房间已关闭</p>
+                    <p class="text-[12px] mt-1 mb-5" style="color: var(--muted)">请重新选择其他房间</p>
+                    <button class="btn btn-line" @click="roomClosed = false">知道了</button>
+                </div>
+
+                <!-- 等待传输 -->
+                <div v-else-if="!lastQrData" class="text-center">
+                    <div class="standby-mark mx-auto"></div>
+                    <p class="text-lg mt-6 mb-0 font-medium">等待发送者传输...</p>
+                    <p class="text-[11px] tracking-[2px] uppercase mt-2 mb-0" style="color: var(--muted)">Standby · Room 「{{ currentRoomName }}」</p>
+                </div>
+
+                <!-- 二维码 -->
+                <div v-else class="flex flex-col items-center">
+                    <div class="p-5 bg-white" style="border: 1px solid var(--ink); border-radius: 2px">
+                        <a-qrcode :value="lastQrData" :size="qrSize" error-level="M" />
+                    </div>
+                    <div class="text-base font-semibold mt-5">「{{ currentRoomName }}」</div>
+                    <div class="text-[11px] tracking-[1.5px] uppercase mt-1.5" style="color: var(--muted)">
+                        Updated · {{ lastQrTime }}
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import socket from '../socket.ts';
 import router from '../router';
 import type { RoomData, RoomsListResponse } from '@qrshare/shared';
 
-// 从 localStorage 获取用户信息
 const username = ref(localStorage.getItem('username') || '');
 const role = ref<'sender' | 'receiver'>((localStorage.getItem('role') as 'sender' | 'receiver') || 'receiver');
 
 const roomList = ref<string[]>([]);
-const currentRoomIndex = ref<number | undefined>();
-const currentRoomName = ref<string>('');
+const currentRoomName = ref('');
+const roomClosed = ref(false);
 const lastQrData = ref('');
 const lastQrTime = ref('');
+const refreshing = ref(false);
 
-watch(currentRoomIndex, (newVal) => {
-  // 离开旧房间
-  if (currentRoomName.value !== '') {
-    socket.emit('leaveRoom', {
-      username: username.value,
-      role: role.value,
-      roomName: currentRoomName.value
+const qrSize = computed(() => (window.innerWidth < 640 ? 220 : 280));
+
+const refreshRooms = () => {
+    refreshing.value = true;
+    socket.emit('getRooms', { username: username.value, role: role.value }, (res: RoomsListResponse) => {
+        roomList.value = res.rooms;
+        refreshing.value = false;
     });
-  }
-  if (newVal === undefined) {
-    currentRoomName.value = '';
-    return;
-  }
-  currentRoomName.value = roomList.value[newVal] ?? '';
-  // 加入新房间
-  socket.emit('joinRoom', {
-    username: username.value,
-    role: role.value,
-    roomName: currentRoomName.value
-  }, (response: RoomData) => {
-    lastQrData.value = response.data || '';
-    lastQrTime.value = response.timestamp ? new Date(response.timestamp).toLocaleString() : '';
-  });
-});
+};
 
-onMounted(() => {
-  // 检查用户信息
-  if (!username.value || role.value !== 'receiver') {
-    router.replace('/');
-    return;
-  }
+const joinRoom = (roomName: string) => {
+    socket.emit('joinRoom', { username: username.value, role: role.value, roomName }, (res: RoomData) => {
+        lastQrData.value = res.data || '';
+        lastQrTime.value = res.timestamp ? new Date(res.timestamp).toLocaleString() : '';
+    });
+};
 
-  // 连接 socket
-  if (!socket.connected) {
-    socket.connect();
-  }
+const selectRoom = (roomName: string) => {
+    if (currentRoomName.value === roomName) return;
+    // 离开旧房间
+    if (currentRoomName.value) {
+        socket.emit('leaveRoom', {
+            username: username.value,
+            role: role.value,
+            roomName: currentRoomName.value,
+        });
+    }
+    currentRoomName.value = roomName;
+    roomClosed.value = false;
+    lastQrData.value = '';
+    lastQrTime.value = '';
+    joinRoom(roomName);
+};
 
-  // 请求当前房间列表
-  socket.emit('getRooms', {
-    username: username.value,
-    role: role.value
-  }, (response: RoomsListResponse) => {
-    roomList.value = response.rooms;
-  });
-
-  // 监听新房间创建
-  socket.on('newRoom', (payload) => {
+const onNewRoom = (payload: { roomName: string }) => {
     if (!roomList.value.includes(payload.roomName)) {
-      roomList.value.push(payload.roomName);
+        roomList.value.push(payload.roomName);
     }
-  });
+};
 
-  // 监听房间删除
-  socket.on('roomDrop', (payload) => {
-    roomList.value = roomList.value.filter(room => room !== payload.roomName);
-    // 如果当前房间被删除，清空显示
+const onRoomDrop = (payload: { roomName: string }) => {
+    roomList.value = roomList.value.filter((room) => room !== payload.roomName);
     if (currentRoomName.value === payload.roomName) {
-      currentRoomIndex.value = undefined;
+        currentRoomName.value = '';
+        lastQrData.value = '';
+        lastQrTime.value = '';
+        roomClosed.value = true;
     }
-  });
+};
 
-  // 监听二维码数据
-  socket.on('newQrcode', (payload) => {
-    console.log("Received QR code from ", payload.roomName, payload.data);
-    if (payload.roomName !== currentRoomName.value) {
-      console.log("QR code room does not match current room, ignoring.");
-      return;
-    }
+const onNewQrcode = (payload: { roomName: string; data: string; timestamp: number }) => {
+    if (payload.roomName !== currentRoomName.value) return;
     lastQrData.value = payload.data;
     lastQrTime.value = new Date(payload.timestamp).toLocaleString();
-  });
-});
+};
 
+onMounted(() => {
+    if (!username.value || role.value !== 'receiver') {
+        router.replace('/');
+        return;
+    }
+
+    if (!socket.connected) {
+        socket.connect();
+    }
+
+    refreshRooms();
+
+    socket.on('newRoom', onNewRoom);
+    socket.on('roomDrop', onRoomDrop);
+    socket.on('newQrcode', onNewQrcode);
+});
 
 onUnmounted(() => {
-  socket.disconnect();
+    socket.off('newRoom', onNewRoom);
+    socket.off('roomDrop', onRoomDrop);
+    socket.off('newQrcode', onNewQrcode);
+
+    if (currentRoomName.value) {
+        socket.emit('leaveRoom', {
+            username: username.value,
+            role: role.value,
+            roomName: currentRoomName.value,
+        });
+    }
+    socket.disconnect();
 });
 </script>
-
-<style scoped>
-.active {
-  background-color: #e2e2e2;
-}
-
-li:hover {
-  background-color: #e2e2e2;
-}
-
-.qr-content h1 {
-  color: #2c3e50;
-  font-size: 2em;
-  word-break: break-all;
-}
-</style>

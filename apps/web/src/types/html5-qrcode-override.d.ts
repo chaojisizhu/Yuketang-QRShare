@@ -16,6 +16,9 @@ declare module "html5-qrcode" {
         fps?: number;
         qrbox?: { width: number; height: number } | Function;
         aspectRatio?: number;
+        // 允许传入 focusMode/zoom 等非标准约束，具体见
+        // https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
+        videoConstraints?: any;
     }
 
     export interface Html5QrcodeCameraCapabilities {
@@ -30,12 +33,13 @@ declare module "html5-qrcode" {
         constructor(elementId: string, config?: any);
         static getCameras(): Promise<CameraDevice[]>;
         start(
-            cameraId: string,
+            cameraIdOrConfig: string | { facingMode: string },
             config: Html5QrcodeConfigs,
             qrCodeSuccessCallback: QrcodeSuccessCallback,
             qrCodeErrorCallback?: QrcodeErrorCallback,
         ): Promise<void>;
         stop(): Promise<void>;
+        clear(): void;
         pause(): void;
         resume(): void;
         applyVideoConstraints(constraints: any): Promise<void>;
