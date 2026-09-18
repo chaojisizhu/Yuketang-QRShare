@@ -64,8 +64,19 @@
             <span class="truncate font-medium">{{ lastSent }}</span>
         </div>
 
+        <!-- 镜头切换：主摄 / 超广角 / 长焦（浏览器可见的多个后置镜头） -->
+        <div v-if="lenses.length > 1" class="mt-5 flex items-center gap-2 flex-wrap rise" style="--d: 130ms">
+            <span class="text-[11px] tracking-[2px] uppercase shrink-0" style="color: var(--muted)">Lens</span>
+            <button v-for="(lens, i) in lenses" :key="lens.id"
+                    class="mf-chip" :class="{ active: currentLens === i }"
+                    :disabled="lensSwitching"
+                    @click="switchLens(i)">
+                {{ lensLabel(i, lens.label) }}
+            </button>
+        </div>
+
         <!-- 变焦：真实镜头变焦 -->
-        <div v-if="caps.zoom" class="mt-5 flex items-center gap-4 rise" style="--d: 140ms">
+        <div v-if="caps.zoom" class="mt-4 flex items-center gap-4 rise" style="--d: 140ms">
             <span class="text-[11px] tracking-[2px] uppercase shrink-0" style="color: var(--muted)">Zoom</span>
             <button class="zoom-chip" title="缩小" @click="zoomBy(1 / 1.25)">−</button>
             <input type="range" class="slider-line" :value="zoomValue"
@@ -97,7 +108,7 @@
         </div>
 
         <p class="text-[12px] mt-4 mb-1 rise" style="--d: 200ms; color: var(--muted)">
-            对准取景框自动识别 · 点按画面手动对焦 · 双指捏合变焦
+            对准取景框自动识别 · 点按画面手动对焦 · 双指捏合或滑条变焦 · 距离太近可切「广角」镜头
         </p>
     </div>
 </template>
@@ -122,6 +133,9 @@ const cameraError = ref('');
 const lastSent = ref('');
 const focusMark = ref<{ x: number; y: number; id: number } | null>(null);
 const focusHint = ref('');
+const lenses = ref<{ id: string; label: string }[]>([]);
+const currentLens = ref(0);
+const lensSwitching = ref(false);
 
 let reader: InstanceType<typeof Html5Qrcode> | null = null;
 let lastData = '';
@@ -149,23 +163,32 @@ const createRoom = (): Promise<boolean> =>
         });
     });
 
-const startCamera = async () => {
+const startCamera = async (deviceId?: string) => {
     cameraError.value = '';
     try {
         reader = new Html5Qrcode('reader');
+
+        // 关键：请求高分辨率视频流。低分辨率流是“放大糊成一片”的根因——
+        // 数码放大的是 480p 的像素。1080p/4K 流配合镜头变焦才有原生相机质感。
+        // 注意：html5-qrcode 在提供 videoConstraints 时会忽略 cameraIdOrConfig，
+        // 镜头切换必须通过 deviceId 写进 videoConstraints 生效。
+        const videoConstraints: Record<string, unknown> = {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: 'continuous' }],
+        };
+        if (deviceId) {
+            videoConstraints.deviceId = { ideal: deviceId };
+        } else {
+            videoConstraints.facingMode = 'environment';
+        }
+
         await reader.start(
-            { facingMode: 'environment' },
+            deviceId ?? { facingMode: 'environment' },
             {
                 fps: 10,
                 qrbox: { width: 230, height: 230 },
-                // 关键：请求高分辨率视频流。低分辨率流是“放大糊成一片”的根因——
-                // 数码放大的是 480p 的像素。1080p/4K 流配合镜头变焦才有原生相机质感。
-                videoConstraints: {
-                    facingMode: 'environment',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    advanced: [{ focusMode: 'continuous' }],
-                },
+                videoConstraints,
             },
             onScanSuccess,
             () => {},
@@ -182,10 +205,58 @@ const startCamera = async () => {
         await attach();
 
         cameraRunning.value = true;
+        await enumerateLenses();
     } catch (e) {
         console.error(e);
+        // 指定镜头启动失败（部分机型拒绝浏览器调用超广角）时回退默认镜头
+        if (deviceId) {
+            currentLens.value = 0;
+            await startCamera();
+            return;
+        }
         cameraError.value = '无法开启摄像头，请检查浏览器权限，或通过 HTTPS 访问';
     }
+};
+
+/** 枚举浏览器可见的后置镜头（超广角等），供手动切换 */
+const enumerateLenses = async () => {
+    try {
+        const devices: { id: string; label: string }[] = await Html5Qrcode.getCameras();
+        const back = devices.filter((d) => !/front|前置/i.test(d.label || ''));
+        if (back.length > 1) {
+            lenses.value = back;
+            return;
+        }
+    } catch {
+        /* 忽略枚举失败 */
+    }
+    lenses.value = [];
+};
+
+/** 镜头显示名：优先读设备 label 里的焦段线索，否则按序号命名 */
+const lensLabel = (i: number, label: string) => {
+    const l = (label || '').toLowerCase();
+    if (/ultra|wide|0\.5|0\.6/.test(l) && !/tele/.test(l)) return '广角';
+    if (/tele|macro/.test(l)) return l.includes('macro') ? '微距' : '长焦';
+    return i === 0 ? '主摄' : `镜头${i + 1}`;
+};
+
+/** 切换镜头：停止当前流后用新 deviceId 重启 */
+const switchLens = async (idx: number) => {
+    if (idx === currentLens.value || !reader || lensSwitching.value) return;
+    const lens = lenses.value[idx];
+    if (!lens) return;
+    lensSwitching.value = true;
+    currentLens.value = idx;
+    zoomValue.value = 1; // 新镜头的变焦量程不同，重置避免越界
+    try {
+        await reader.stop();
+    } catch {
+        /* 忽略 */
+    }
+    reader.clear();
+    await startCamera(lens.id);
+    lensSwitching.value = false;
 };
 
 const onScanSuccess = (decodedText: string) => {
